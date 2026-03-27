@@ -7,7 +7,6 @@ load_dotenv()
 
 model = os.getenv("MODEL_NAME")
 assistant_name = os.getenv("ASSISTANT_NAME")
-timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 system_prompt = f"""You are a helpful assistant called {assistant_name}. 
 You are concise, friendly, and honest.
@@ -18,6 +17,7 @@ conversation = [
 ]
 
 def save_conversation():
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open("conversation.txt", "a") as f:
         f.write(f"{timestamp} - {assistant_name} Conversation\n")
         for message in conversation:
