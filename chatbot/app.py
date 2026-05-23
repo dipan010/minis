@@ -15,15 +15,17 @@ Run:
     streamlit run app.py
 """
 
-import re
-import tempfile
 import streamlit as st
-from pathlib import Path
 
-from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
+from llama_index.core import VectorStoreIndex, Settings
+from llama_index.core.schema import Document
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
+# pymupdf gives us clean, structured text extraction — much better than
+# SimpleDirectoryReader's default pypdf parser for complex/tagged PDFs
+import fitz  # pip install pymupdf
 
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -118,58 +120,62 @@ def get_llm(model: str) -> Ollama:
     return Ollama(model=model, request_timeout=120.0)
 
 
-# ── FIX 2: clean snippet — strip non-printable / binary-looking text ──────────
-_BINARY_RE = re.compile(r'[^\x20-\x7E\n]{4,}')   # runs of 4+ non-ASCII chars
-
-def clean_snippet(text: str, max_len: int = 200) -> str:
+# ── PDF extraction via pymupdf ────────────────────────────────────────────────
+def extract_pages(file_bytes: bytes) -> list[Document]:
     """
-    Remove raw PDF binary/object-stream garbage from a chunk before display.
-    LlamaIndex sometimes includes structural metadata in the text field when
-    the PDF has embedded objects (images, fonts, ICC profiles).
+    Use pymupdf (fitz) to extract clean plain text, one Document per page.
+
+    Why pymupdf instead of SimpleDirectoryReader?
+    - SimpleDirectoryReader uses pypdf under the hood, which for complex/tagged
+      PDFs (like a CV with tables and columns) often pulls in PDF structural
+      metadata: /StructElem, /Figure, object references, binary font streams.
+    - pymupdf's get_text("text") renders the page as a reading-order text flow,
+      stripping all internal PDF structure. The result is clean prose.
     """
-    # Drop lines that look like PDF object streams (obj/endobj/stream markers)
-    lines = text.splitlines()
-    clean_lines = [
-        l for l in lines
-        if not re.search(r'\b(obj|endobj|stream|endstream|xref|startxref)\b', l)
-        and not _BINARY_RE.search(l)
-        and len(l.strip()) > 0
-    ]
-    cleaned = " ".join(clean_lines).strip()
+    docs = []
+    pdf  = fitz.open(stream=file_bytes, filetype="pdf")
+    for page_num, page in enumerate(pdf, start=1):
+        text = page.get_text("text").strip()
+        if not text:          # skip blank / image-only pages
+            continue
+        docs.append(Document(
+            text=text,
+            metadata={"page": page_num, "page_label": str(page_num)},
+        ))
+    pdf.close()
+    return docs
 
-    # If nothing readable survived, say so honestly
-    if len(cleaned) < 20:
-        return "(binary or image data — no readable text in this chunk)"
 
-    return cleaned[:max_len] + ("…" if len(cleaned) > max_len else "")
+def make_snippet(text: str, max_len: int = 200) -> str:
+    """Return a short, single-line preview of a chunk — no cleaning needed
+    because pymupdf already gives us clean text."""
+    preview = " ".join(text.split())   # collapse whitespace / newlines
+    return preview[:max_len] + ("…" if len(preview) > max_len else "")
 
 
 # ── Indexing ──────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def build_index(file_bytes: bytes, filename: str) -> VectorStoreIndex:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir) / filename
-        tmp_path.write_bytes(file_bytes)
-        docs = SimpleDirectoryReader(tmpdir).load_data()
+    docs = extract_pages(file_bytes)
+    if not docs:
+        raise ValueError("No readable text found in this PDF.")
     return VectorStoreIndex.from_documents(docs)
 
 
 # ── RAG query ─────────────────────────────────────────────────────────────────
 def ask_manual(index: VectorStoreIndex, question: str, model: str) -> dict:
     Settings.llm = get_llm(model)
-    engine = index.as_query_engine(similarity_top_k=4, response_mode="compact")
+    engine   = index.as_query_engine(similarity_top_k=4, response_mode="compact")
     response = engine.query(question)
 
     sources = []
     for node in response.source_nodes:
         meta    = node.node.metadata
         page    = meta.get("page_label") or meta.get("page") or "?"
-        snippet = clean_snippet(node.node.text)   # FIX 2 applied here
-        score   = round(node.score or 0, 2)
-
-        # Only include this source if there's something readable to show
-        if snippet != "(binary or image data — no readable text in this chunk)":
-            sources.append({"page": page, "score": score, "snippet": snippet})
+        snippet = make_snippet(node.node.text)
+        # Score intentionally excluded — it's an internal embedding metric,
+        # not meaningful to end users.
+        sources.append({"page": page, "snippet": snippet})
 
     return {"answer": str(response), "sources": sources}
 
@@ -264,8 +270,7 @@ for turn in st.session_state.chat_history:
         for src in readable_sources[:3]:
             st.markdown(
                 f'<div class="citation-box">'
-                f'<span class="cite-page">📄 Page {src["page"]}</span>'
-                f' · score {src["score"]}<br>'
+                f'<span class="cite-page">📄 Page {src["page"]}</span><br>'
                 f'<span class="cite-snippet">{src["snippet"]}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
