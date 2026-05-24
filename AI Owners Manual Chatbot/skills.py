@@ -1,148 +1,271 @@
 """
-skills.py — Tool calls / skills for the Owners Manual chatbot.
+skills.py — Semantic skill router + tool calls for the Owners Manual chatbot.
 
-Each skill is a specialized query function that handles a specific intent.
-The skill_router() detects intent from the user's question and dispatches
-to the right skill automatically — no user configuration needed.
+HOW THE SEMANTIC ROUTER WORKS:
+  1. At startup, build_router() encodes all skill utterances into vectors
+     using the same bge-small model already loaded by LlamaIndex.
+  2. When a question arrives, skill_router() encodes it and computes
+     cosine similarity against every utterance vector.
+  3. The skill whose utterances score highest wins.
+  4. That skill's system prompt is injected into the LLM query.
 
-Skills:
-  1. general_qa           — default RAG, answers any question from the manual
-  2. maintenance_schedule — extracts service intervals as a structured list
-  3. warning_lights       — identifies all warning indicators and their meaning
-  4. troubleshoot         — symptom → probable cause → fix
-  5. specs_extractor      — pulls technical specifications as structured data
+This is Option 4 (DIY cosine) from the alternatives discussion:
+  - Zero new dependencies (reuses Settings.embed_model from models.py)
+  - No LLM call for routing (~50ms vs 2-5s for LLM-based routing)
+  - No internet needed (model already cached locally by LlamaIndex)
+  - Falls back to general_qa when similarity is below threshold
+
+The semantic_router library (Option 2) wraps this same pattern.
+We implement it directly to avoid torch/fastembed sandbox conflicts,
+and because reusing the already-loaded embed model is more efficient.
 """
 
-import re
-from llama_index.core import VectorStoreIndex
+import numpy as np
+from llama_index.core import VectorStoreIndex, Settings
+from llama_index.core.prompts import PromptTemplate
 from ingestion import make_snippet
 
 
-# ── Intent keyword maps ───────────────────────────────────────────────────────
-# Each skill has trigger keywords. The router scores the question against these
-# and picks the highest-scoring skill. Falls back to general_qa if no match.
+# ─────────────────────────────────────────────────────────────────────────────
+# SKILL DEFINITIONS
+# Each skill has:
+#   utterances  — example questions a user might ask (used for semantic matching)
+#   prompt      — system instruction injected into the LLM for this skill
+#   label       — displayed in the UI as a badge on AI responses
+# ─────────────────────────────────────────────────────────────────────────────
 
-_SKILL_KEYWORDS: dict[str, list[str]] = {
-    "maintenance_schedule": [
-        "maintenance", "service", "interval", "schedule", "replace", "change",
-        "oil", "filter", "tyre", "tire", "fluid", "coolant", "brake", "when",
-        "how often", "every", "km", "miles", "months", "years",
-    ],
-    "warning_lights": [
-        "warning", "light", "indicator", "dashboard", "alert", "signal",
-        "red", "amber", "yellow", "orange", "icon", "symbol", "blink",
-        "flashing", "illuminate", "lamp", "check engine",
-    ],
-    "troubleshoot": [
-        "not working", "broken", "issue", "problem", "fault", "error",
-        "won't", "wont", "doesn't", "doesnt", "failed", "fix", "repair",
-        "diagnose", "symptom", "strange", "noise", "vibrat", "leak",
-        "overheat", "dead", "won't start",
-    ],
-    "specs_extractor": [
-        "spec", "specification", "dimension", "weight", "capacity", "power",
-        "torque", "engine", "horsepower", "hp", "kw", "voltage", "ampere",
-        "watt", "rpm", "speed", "pressure", "temperature", "size", "rating",
-    ],
+SKILLS: dict[str, dict] = {
+    "maintenance_schedule": {
+        "label": "🔧 Maintenance Schedule",
+        "utterances": [
+            "What are the maintenance intervals?",
+            "When should I change the oil?",
+            "How often do I need to replace the filter?",
+            "What is the service schedule?",
+            "When does the brake fluid need changing?",
+            "What are the recommended service intervals in km or miles?",
+            "How often should I rotate the tyres?",
+            "What needs to be replaced and when?",
+            "Tell me all the scheduled maintenance tasks.",
+            "What are the periodic maintenance requirements?",
+        ],
+        "prompt": (
+            "You are a maintenance scheduling expert reading an owners manual. "
+            "Extract ALL maintenance tasks and their intervals from the context. "
+            "Format each item as:\n"
+            "• [Task]: [Interval] — [Notes if any]\n\n"
+            "Only include tasks explicitly mentioned in the context. "
+            "Do not invent or assume any maintenance items."
+        ),
+    },
+
+    "warning_lights": {
+        "label": "⚠️ Warning Lights",
+        "utterances": [
+            "What does the warning light mean?",
+            "Why is the dashboard light on?",
+            "What does the red indicator mean?",
+            "The amber light is flashing — what do I do?",
+            "What are all the warning symbols?",
+            "What does the check engine light mean?",
+            "There is a yellow icon on my dashboard.",
+            "What do the dashboard indicators mean?",
+            "The warning light came on — is it serious?",
+            "What does the orange symbol mean?",
+        ],
+        "prompt": (
+            "You are a diagnostic expert for owners manuals. "
+            "Identify ALL warning lights and indicators mentioned in the context. "
+            "For each one:\n"
+            "• [Indicator name / colour]: [What it signals] → [Recommended action]\n\n"
+            "If no warning indicators are found in the context, say so clearly."
+        ),
+    },
+
+    "troubleshoot": {
+        "label": "🔍 Troubleshoot",
+        "utterances": [
+            "My device is not working — how do I fix it?",
+            "It won't turn on.",
+            "There is a strange noise.",
+            "The machine keeps stopping.",
+            "How do I fix this problem?",
+            "It is making a vibrating sound.",
+            "Something is leaking.",
+            "It is overheating.",
+            "The error code appeared — what does it mean?",
+            "It stopped working suddenly.",
+            "How do I diagnose this fault?",
+            "My car won't start.",
+            "The device is behaving strangely.",
+        ],
+        "prompt": (
+            "You are a troubleshooting expert for owners manuals. "
+            "Based on the symptom described and the manual context:\n"
+            "1. Most likely cause\n"
+            "2. Step-by-step resolution from the manual\n"
+            "3. Whether professional service is required\n\n"
+            "Use ONLY information from the provided context. "
+            "If the issue is not covered, say so and recommend contacting support."
+        ),
+    },
+
+    "specs_extractor": {
+        "label": "📐 Specifications",
+        "utterances": [
+            "What are the technical specifications?",
+            "What is the engine capacity?",
+            "What is the power output?",
+            "What is the weight of this product?",
+            "What are the dimensions?",
+            "What voltage does it run on?",
+            "What is the maximum speed?",
+            "What is the fuel tank capacity?",
+            "What are the torque specs?",
+            "Tell me the ratings and technical data.",
+            "What is the operating temperature range?",
+            "How many watts does it consume?",
+        ],
+        "prompt": (
+            "You are a technical specifications expert. "
+            "Extract ALL technical specifications from the context. "
+            "Format as:\n"
+            "• [Spec name]: [Value] [Unit]\n\n"
+            "Group related specs (e.g. Engine, Dimensions, Electrical). "
+            "Only include specs explicitly stated in the context."
+        ),
+    },
+
+    "general_qa": {
+        "label": "💬 General Q&A",
+        "utterances": [
+            "How does this work?",
+            "What is this product?",
+            "Can you explain this feature?",
+            "What does this button do?",
+            "How do I use this?",
+            "What is included in the box?",
+            "How do I set it up?",
+            "What are the safety precautions?",
+            "How do I reset it to factory defaults?",
+            "Where is the power button?",
+        ],
+        "prompt": (
+            "You are a helpful assistant for owners manuals. "
+            "Answer the question using ONLY the context provided from the manual. "
+            "If the answer is not in the context, say clearly that the manual "
+            "does not cover this topic. Be concise and direct."
+        ),
+    },
 }
 
+SKILL_LABELS = {k: v["label"] for k, v in SKILLS.items()}
 
-# ── System prompts — each skill has a tailored prompt ────────────────────────
-
-_PROMPTS = {
-    "general_qa": (
-        "You are a helpful assistant for owners manuals. "
-        "Answer the user's question using ONLY the context provided from the manual. "
-        "If the answer is not in the context, say so clearly. "
-        "Be concise and direct."
-    ),
-
-    "maintenance_schedule": (
-        "You are a maintenance scheduling expert. "
-        "From the provided manual context, extract ALL maintenance tasks and their intervals. "
-        "Format your response as a clean list where each item follows this pattern:\n"
-        "• [Task name]: every [interval] (e.g. every 5,000 km or 6 months)\n"
-        "Include ONLY tasks mentioned in the context. Do not invent tasks."
-    ),
-
-    "warning_lights": (
-        "You are a vehicle/appliance diagnostic expert. "
-        "From the provided manual context, identify ALL warning lights or indicators mentioned. "
-        "For each one, provide:\n"
-        "• [Indicator name / color]: [What it means] → [Recommended action]\n"
-        "If no warning indicators are mentioned in the context, say so."
-    ),
-
-    "troubleshoot": (
-        "You are a troubleshooting expert for owners manuals. "
-        "Based on the symptom described and the manual context provided:\n"
-        "1. Identify the most likely cause\n"
-        "2. Provide step-by-step resolution from the manual\n"
-        "3. Note if professional service is required\n"
-        "Use ONLY information from the provided context."
-    ),
-
-    "specs_extractor": (
-        "You are a technical specifications expert. "
-        "From the provided manual context, extract ALL technical specifications mentioned. "
-        "Format as a clean list:\n"
-        "• [Spec name]: [Value] [Unit]\n"
-        "Group related specs together. Only include specs explicitly stated in the context."
-    ),
-}
-
-# ── Skill labels shown in the UI ──────────────────────────────────────────────
-SKILL_LABELS = {
-    "general_qa":           "💬 General Q&A",
-    "maintenance_schedule": "🔧 Maintenance Schedule",
-    "warning_lights":       "⚠️ Warning Lights",
-    "troubleshoot":         "🔍 Troubleshoot",
-    "specs_extractor":      "📐 Specs",
-}
+# Fallback threshold — if best similarity is below this, use general_qa
+SIMILARITY_THRESHOLD = 0.35
 
 
-def skill_router(question: str) -> str:
+# ─────────────────────────────────────────────────────────────────────────────
+# ROUTER — built once, cached in session state by app.py
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SemanticSkillRouter:
     """
-    Score the question against each skill's keyword list.
-    Returns the skill name with the highest match score.
-    Falls back to 'general_qa' if nothing scores above 0.
+    Encodes all skill utterances at startup. On each query, encodes the
+    question and finds the skill with the highest cosine similarity.
 
-    Scoring: each keyword found in the (lowercased) question adds 1 point.
-    Multi-word keywords (e.g. "how often") count as 2 points.
+    Uses Settings.embed_model (bge-small-en-v1.5) — already loaded by
+    LlamaIndex, so no additional model download or memory cost.
     """
-    q = question.lower()
-    scores: dict[str, int] = {skill: 0 for skill in _SKILL_KEYWORDS}
 
-    for skill, keywords in _SKILL_KEYWORDS.items():
-        for kw in keywords:
-            if kw in q:
-                scores[skill] += len(kw.split())   # multi-word = higher weight
+    def __init__(self):
+        self._skill_vectors: dict[str, np.ndarray] = {}
+        self._build_index()
 
-    best_skill = max(scores, key=lambda s: scores[s])
-    return best_skill if scores[best_skill] > 0 else "general_qa"
+    def _embed(self, texts: list[str]) -> np.ndarray:
+        """Embed a list of texts using the global LlamaIndex embed model."""
+        embed_model = Settings.embed_model
+        vecs = embed_model.get_text_embedding_batch(texts)
+        arr = np.array(vecs, dtype=np.float32)
+        # L2-normalise so dot product == cosine similarity
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        return arr / np.maximum(norms, 1e-9)
 
+    def _build_index(self) -> None:
+        """
+        Embed all utterances for every skill and store as a matrix.
+        Each skill gets one matrix of shape (n_utterances, embedding_dim).
+        Called once at startup — takes ~1s total.
+        """
+        for skill_name, skill in SKILLS.items():
+            utterances = skill["utterances"]
+            vecs = self._embed(utterances)
+            self._skill_vectors[skill_name] = vecs   # shape: (n, dim)
+
+    def route(self, question: str) -> tuple[str, float]:
+        """
+        Route a question to the best-matching skill.
+
+        Returns (skill_name, similarity_score).
+        Falls back to 'general_qa' if no skill exceeds SIMILARITY_THRESHOLD.
+
+        Algorithm:
+          1. Embed the question into a vector q
+          2. For each skill, compute cosine similarity between q and every
+             utterance vector, take the MAX (not mean) — we want the best
+             single match, not the average
+          3. The skill with the highest max similarity wins
+        """
+        q_vec = self._embed([question])[0]   # shape: (dim,)
+
+        best_skill = "general_qa"
+        best_score = 0.0
+
+        for skill_name, utterance_vecs in self._skill_vectors.items():
+            # dot product with each utterance (already L2-normalised = cosine sim)
+            sims = utterance_vecs @ q_vec           # shape: (n_utterances,)
+            max_sim = float(np.max(sims))
+
+            if max_sim > best_score:
+                best_score = max_sim
+                best_skill = skill_name
+
+        if best_score < SIMILARITY_THRESHOLD:
+            best_skill = "general_qa"
+
+        return best_skill, round(best_score, 3)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SKILL EXECUTION
+# ─────────────────────────────────────────────────────────────────────────────
 
 def run_skill(
     index: VectorStoreIndex,
     question: str,
-    skill_name: str | None = None,
+    router: SemanticSkillRouter,
+    force_skill: str | None = None,
 ) -> dict:
     """
-    Run a skill against the index and return {answer, sources, skill_used}.
+    Route the question semantically, then run the matched skill's query.
 
-    If skill_name is None, the router auto-detects it.
-    Each skill injects its system prompt into the LLM call via a custom
-    text_qa_template so the model knows how to format its answer.
+    Returns:
+        answer      — LLM response string
+        sources     — list of {page, snippet} citation dicts
+        skill_used  — skill name key
+        skill_label — display label for the UI badge
+        similarity  — cosine similarity score from the router
     """
-    from llama_index.core.prompts import PromptTemplate
+    if force_skill and force_skill in SKILLS:
+        skill_name = force_skill
+        similarity  = 1.0
+    else:
+        skill_name, similarity = router.route(question)
 
-    # Auto-detect if not forced
-    if skill_name is None:
-        skill_name = skill_router(question)
+    skill       = SKILLS[skill_name]
+    system_prompt = skill["prompt"]
 
-    system_prompt = _PROMPTS.get(skill_name, _PROMPTS["general_qa"])
-
-    # Build a prompt template that prepends the skill's system instruction
+    # Inject the skill's system prompt into the LLM via a custom QA template
     qa_template = PromptTemplate(
         "System: " + system_prompt + "\n\n"
         "Context from manual:\n"
@@ -161,7 +284,6 @@ def run_skill(
 
     response = engine.query(question)
 
-    # Build source citations
     sources = []
     for node in response.source_nodes:
         meta = node.node.metadata
@@ -172,8 +294,9 @@ def run_skill(
         })
 
     return {
-        "answer":     str(response),
-        "sources":    sources,
-        "skill_used": skill_name,
-        "skill_label": SKILL_LABELS.get(skill_name, skill_name),
+        "answer":      str(response),
+        "sources":     sources,
+        "skill_used":  skill_name,
+        "skill_label": skill["label"],
+        "similarity":  similarity,
     }

@@ -10,16 +10,23 @@ Run:
     streamlit run app.py
 """
 
+# pyrefly: ignore [missing-import]
+import SemanticSkillRouter
 import streamlit as st
 from models    import configure_settings
 from ingestion import build_index, get_page_text
-from skills    import run_skill, SKILL_LABELS
+from skills    import run_skill, build_router, SKILL_LABELS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BOOT
 # ─────────────────────────────────────────────────────────────────────────────
 configure_settings()   # sets LlamaIndex global Settings once
+
+# Build semantic router once — embeds all skill utterances using bge-small.
+# Cached in skills._router so subsequent reruns skip the rebuild.
+from llama_index.core import Settings as _Settings
+_router = build_router(_Settings.embed_model.get_text_embedding)
 
 st.set_page_config(
     page_title="Owners Manual AI",
@@ -184,6 +191,7 @@ for key, default in {
     "doc_bytes":        None,
     "pending_question": None,
     "indexed_file":     None,   # tracks which filename is already indexed
+    "router":           None,   # SemanticSkillRouter — built once at startup
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -288,6 +296,18 @@ with st.sidebar:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# BUILD SEMANTIC ROUTER (once per session, after LlamaIndex Settings are ready)
+# ─────────────────────────────────────────────────────────────────────────────
+if st.session_state.router is None:
+    with st.spinner("Initialising semantic router…"):
+        try:
+            st.session_state.router = SemanticSkillRouter()
+        except Exception as e:
+            st.warning(f"Router init failed: {e}. Falling back to general Q&A.")
+            st.session_state.router = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PROCESS PENDING QUESTION (before UI renders to avoid duplicate submission)
 # ─────────────────────────────────────────────────────────────────────────────
 if st.session_state.pending_question and st.session_state.index:
@@ -296,7 +316,7 @@ if st.session_state.pending_question and st.session_state.index:
 
     with st.spinner("Running skill…"):
         try:
-            result = run_skill(st.session_state.index, q)
+            result = run_skill(st.session_state.index, q, _router)
             st.session_state.chat_history.append({
                 "question":    q,
                 "answer":      result["answer"],
@@ -358,7 +378,9 @@ with col_chat:
             f'<span class="cite-pill">📄 Page {s["page"]}</span>'
             for s in turn.get("sources", [])[:3]
         )
-        skill_badge = f'<div class="skill-badge">{turn.get("skill_label","💬 General Q&A")}</div>'
+        conf = turn.get("confidence", "")
+        conf_str = f' · {conf:.0%}' if isinstance(conf, float) else ""
+        skill_badge = f'<div class="skill-badge">{turn.get("skill_label","💬 General Q&A")}{conf_str}</div>'
 
         st.markdown(f"""
         <div class="msg-ai">
