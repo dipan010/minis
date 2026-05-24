@@ -10,12 +10,10 @@ Run:
     streamlit run app.py
 """
 
-# pyrefly: ignore [missing-import]
-import SemanticSkillRouter
 import streamlit as st
 from models    import configure_settings
 from ingestion import build_index, get_page_text
-from skills    import run_skill, build_router, SKILL_LABELS
+from skills    import run_skill, SemanticSkillRouter, SKILL_LABELS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -23,10 +21,7 @@ from skills    import run_skill, build_router, SKILL_LABELS
 # ─────────────────────────────────────────────────────────────────────────────
 configure_settings()   # sets LlamaIndex global Settings once
 
-# Build semantic router once — embeds all skill utterances using bge-small.
-# Cached in skills._router so subsequent reruns skip the rebuild.
-from llama_index.core import Settings as _Settings
-_router = build_router(_Settings.embed_model.get_text_embedding)
+# Semantic router is built once per session in session state using SemanticSkillRouter.
 
 st.set_page_config(
     page_title="Owners Manual AI",
@@ -316,7 +311,10 @@ if st.session_state.pending_question and st.session_state.index:
 
     with st.spinner("Running skill…"):
         try:
-            result = run_skill(st.session_state.index, q, _router)
+            if st.session_state.router is None:
+                result = run_skill(st.session_state.index, q, None, force_skill="general_qa")
+            else:
+                result = run_skill(st.session_state.index, q, st.session_state.router)
             st.session_state.chat_history.append({
                 "question":    q,
                 "answer":      result["answer"],
