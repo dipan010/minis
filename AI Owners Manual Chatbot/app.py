@@ -34,6 +34,28 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Force sidebar permanently open via JS — Streamlit collapses it on mobile/narrow viewports
+# This clicks the expand button if it appears, and hides the collapse button
+_SIDEBAR_JS = """
+<script>
+(function keepSidebarOpen() {
+    function forceOpen() {
+        // Hide any collapse button that appears
+        document.querySelectorAll(
+            '[data-testid="stSidebarCollapseButton"], [data-testid="collapsedControl"]'
+        ).forEach(el => { el.style.display = 'none'; });
+
+        // If sidebar is collapsed (has aria-expanded=false), click to open
+        const collapsed = document.querySelector('[data-testid="collapsedControl"]');
+        if (collapsed) collapsed.click();
+    }
+    // Run immediately and watch for DOM changes
+    forceOpen();
+    new MutationObserver(forceOpen).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+"""
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CSS — Stitch design tokens ported into Streamlit
@@ -56,13 +78,38 @@ html, body, [class*="css"] {
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 0 !important; max-width: 100% !important; }
 
-/* ── Sidebar — matches Column 1 from Stitch ── */
+/* ── Force sidebar always open — no collapse ── */
+button[data-testid="collapsedControl"],
+button[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapseButton"],
+section[data-testid="stSidebar"] button[kind="header"] {
+    display: none !important;
+}
+
 section[data-testid="stSidebar"] {
+    transform: translateX(0) !important;
+    width: 280px !important;
+    min-width: 280px !important;
     background: #131313 !important;
     border-right: 1px solid #3b4b3d !important;
+    visibility: visible !important;
+    left: 0 !important;
+    position: relative !important;
+    flex-shrink: 0 !important;
+}
+section[data-testid="stSidebar"] > div {
+    padding: 24px 20px !important;
     width: 280px !important;
 }
-section[data-testid="stSidebar"] > div { padding: 24px 20px !important; }
+
+/* Main content never slides under hidden sidebar */
+.main .block-container,
+section.main > div {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: 100% !important;
+}
 
 /* Sidebar logo row */
 .sidebar-logo {
@@ -412,6 +459,9 @@ div[data-testid="column"] + div[data-testid="column"] {
 ::-webkit-scrollbar-thumb:hover { background: #3b4b3d; }
 </style>
 """, unsafe_allow_html=True)
+
+# Inject JS to keep sidebar permanently open
+st.markdown(_SIDEBAR_JS, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
