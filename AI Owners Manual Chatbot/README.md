@@ -48,27 +48,6 @@ Then open `http://localhost:8501`, upload a PDF, and start asking questions.
 
 ---
 
-## Deploy (Optional)
-
-Since Ollama runs locally, deploying to Streamlit Cloud requires Ollama to be accessible over the internet. Options:
-
-1. **Keep it local + record a demo** (Recommended for Week 1):
-   - Record a 2-min Loom of it running locally
-   - Post on LinkedIn with the video
-   - Link to the GitHub repo
-
-2. **Use a remote Ollama server** (Week 2+):
-   - Run Ollama on a VPS or docker container
-   - Set `OLLAMA_API_ENDPOINT` env var in Streamlit Cloud
-   - Deploy to [share.streamlit.io](https://share.streamlit.io)
-
-3. **Switch to a cloud LLM** (Week 2+):
-   - Replace Ollama with Claude/Groq/Together.ai
-   - Redeploy to Streamlit Cloud
-   - Pay per API call instead of zero (Ollama is free)
-
----
-
 ## Edge Cases Handled
 
 | Scenario | Behaviour |
