@@ -194,87 +194,6 @@ export default function App() {
     const [useClaudeApi, setUseClaudeApi] = useState(true);
     const resultsRef = useRef(null);
 
-    async function analyzeWithClaude(emailText) {
-        const prompt = `You are an expert email sentiment analyst. Analyze the following email and return ONLY a JSON object (no markdown, no explanation).
-
-Email:
-${emailText}
-
-Return this exact JSON structure:
-{
-  "primary_sentiment": "frustrated|positive|confused|urgent|neutral",
-  "secondary_sentiments": ["list", "of", "other", "detected", "sentiments"],
-  "confidence": 85,
-  "tone_summary": "One sentence describing the overall tone",
-  "key_signals": ["signal 1", "signal 2", "signal 3"],
-  "intent": "What the sender wants to achieve",
-  "risk_level": "low|medium|high",
-  "recommended_response_urgency": "within 1 hour|within 4 hours|within 24 hours|within 48 hours",
-  "replies": {
-    "formal": "A formal, professional reply draft (2-3 paragraphs)",
-    "friendly": "A warm, empathetic reply draft (2-3 paragraphs)",
-    "brief": "A concise, action-focused reply draft (3-5 sentences)"
-  }
-}`;
-
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model: "claude-sonnet-4-20250514",
-                max_tokens: 1000,
-                messages: [{ role: "user", content: prompt }],
-            }),
-        });
-
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        const data = await response.json();
-        const text = data.content.map((c) => c.text || "").join("");
-        const clean = text.replace(/```json|```/g, "").trim();
-        return JSON.parse(clean);
-    }
-
-    async function analyzeWithOllama(emailText) {
-        const prompt = `You are an expert email sentiment analyst. Analyze the following email and return ONLY a valid JSON object. No markdown fences, no explanation, just JSON.
-
-Email:
-${emailText}
-
-Return this exact JSON structure:
-{
-  "primary_sentiment": "frustrated|positive|confused|urgent|neutral",
-  "secondary_sentiments": ["list", "of", "other", "detected", "sentiments"],
-  "confidence": 85,
-  "tone_summary": "One sentence describing the overall tone",
-  "key_signals": ["signal 1", "signal 2", "signal 3"],
-  "intent": "What the sender wants to achieve",
-  "risk_level": "low|medium|high",
-  "recommended_response_urgency": "within 1 hour|within 4 hours|within 24 hours|within 48 hours",
-  "replies": {
-    "formal": "A formal, professional reply draft (2-3 paragraphs)",
-    "friendly": "A warm, empathetic reply draft (2-3 paragraphs)",
-    "brief": "A concise, action-focused reply draft (3-5 sentences)"
-  }
-}`;
-
-        const response = await fetch(`${ollamaUrl}/api/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model,
-                prompt,
-                stream: false,
-                format: "json",
-            }),
-        });
-
-        if (!response.ok) throw new Error(`Ollama error: ${response.status}. Is Ollama running at ${ollamaUrl}?`);
-        const data = await response.json();
-        const text = data.response || "";
-        const clean = text.replace(/```json|```/g, "").trim();
-        return JSON.parse(clean);
-    }
-
     async function analyze() {
         if (!emailText.trim()) {
             setError("Please paste an email first.");
@@ -284,17 +203,24 @@ Return this exact JSON structure:
         setError("");
         setAnalysis(null);
         try {
-            const result = useClaudeApi
-                ? await analyzeWithClaude(emailText)
-                : await analyzeWithOllama(emailText);
-            setAnalysis(result);
+            const response = await fetch("/api/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    emailText,
+                    backend: useClaudeApi ? "claude" : "ollama",
+                    ollamaUrl,
+                    model,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || `Server error ${response.status}`);
+
+            setAnalysis(data);
             setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
         } catch (e) {
-            setError(
-                useClaudeApi
-                    ? `Claude API error: ${e.message}`
-                    : `Ollama error: ${e.message}. Make sure Ollama is running locally with 'ollama serve' and you've pulled the model with 'ollama pull ${model}'.`
-            );
+            setError(e.message);
         } finally {
             setLoading(false);
         }
