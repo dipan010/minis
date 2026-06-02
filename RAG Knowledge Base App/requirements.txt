@@ -1,0 +1,30 @@
+# ── Core RAG Framework ────────────────────────────────────────────────────
+# LlamaIndex core + the specific integrations we use.
+# Pin to 0.10.x — the API changed significantly from 0.9 to 0.10.
+llama-index-core>=0.10.50
+llama-index-llms-ollama>=0.1.0
+llama-index-embeddings-ollama>=0.1.0
+llama-index-vector-stores-chroma>=0.1.0
+
+# ── Vector Database ───────────────────────────────────────────────────────
+# ChromaDB for persistent vector storage. Runs embedded (no server).
+chromadb>=0.5.0
+
+# ── PDF Processing ────────────────────────────────────────────────────────
+# PyMuPDF (fitz) — fast, high-quality PDF text extraction.
+PyMuPDF>=1.24.0
+
+# ── Web Scraping ──────────────────────────────────────────────────────────
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# ── API Layer ─────────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn>=0.27.0
+python-multipart>=0.0.6    # Required for FastAPI file uploads
+
+# ── UI Layer ──────────────────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0       # Load .env files
