@@ -12,3 +12,9 @@ __pycache__/
 .vscode/
 .python-version
 conversation.txt
+AI Owners Manual Chatbot/code.html
+.gitignore
+AI Owners Manual Chatbot/honda_civic_sample_manual.pdf
+AI Owners Manual Chatbot/samsung_washerdryer_sample_manual.pdf
+AI Owners Manual Chatbot/screen.png
+AI Owners Manual Chatbot/tplink_router_sample_manual.pdf
