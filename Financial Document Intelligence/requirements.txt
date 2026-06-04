@@ -1,0 +1,16 @@
+# Install with: pip install -r requirements.txt
+
+# Core
+pandas>=2.0.0
+streamlit>=1.35.0
+
+# HTTP (for Ollama calls)
+requests>=2.31.0
+
+# Optional: PDF parsing 
+pdfplumber>=0.10.0
+
+# NOTE: Requires Ollama running locally.
+# Pull the model before first run:
+#   ollama pull llama3.1
+# (or: ollama pull llama3  — use whichever name matches your pull)
