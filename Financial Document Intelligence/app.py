@@ -14,6 +14,7 @@ import io
 import time
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 from synthetic_data import generate_statement
 from transaction_parser import parse_csv, summary_stats
@@ -294,6 +295,26 @@ if st.session_state.df_categorised is not None:
     with col_left:
         st.markdown('<div class="section-title">Spend by Category</div>', unsafe_allow_html=True)
         cat_df = category_totals(df)
+
+        fig = px.pie(
+            cat_df,
+            names="category",
+            values="total_spend",
+            hole=0.5,
+            template="plotly_dark",
+            custom_data=["pct_of_total"],
+        )
+        fig.update_traces(
+            hovertemplate="<b>%{label}</b><br>₹%{value:,.0f}<br>%{customdata[0]:.1f}%<extra></extra>",
+            textposition="inside",
+        )
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="v", font=dict(color="#e0e0e0")),
+            margin=dict(t=10, b=10, l=10, r=10),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
         display_cat = cat_df[["category", "total_spend", "transaction_count", "pct_of_total"]].copy()
         display_cat.columns = ["Category", "Total Spend (₹)", "# Transactions", "% of Total"]
