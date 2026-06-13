@@ -29,6 +29,7 @@ from aggregator import (
     spending_summary,
 )
 from anomaly_detector import category_month_anomalies, transaction_outliers
+from insights_generator import generate_spending_summary
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -116,6 +117,19 @@ h1, h2, h3 {
     font-weight: 500;
 }
 
+/* Summary card */
+.summary-card {
+    background: linear-gradient(135deg, #0f1117 0%, #1a1d2e 100%);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-left: 4px solid #f59e0b;
+    border-radius: 16px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: #d1d5db;
+}
+
 /* Override Streamlit table styling */
 .stDataFrame { border-radius: 10px; overflow: hidden; }
 </style>
@@ -123,7 +137,7 @@ h1, h2, h3 {
 
 
 # ── Session state init ─────────────────────────────────────────────────────────
-for key in ["df_parsed", "df_categorised", "stats"]:
+for key in ["df_parsed", "df_categorised", "stats", "spending_summary_text"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -170,6 +184,7 @@ with st.sidebar:
             st.session_state.df_parsed = None
             st.session_state.df_categorised = None
             st.session_state.stats = None
+            st.session_state.spending_summary_text = None
             cat_module.clear_cache()
             st.rerun()
 
@@ -221,6 +236,19 @@ if run_btn:
 
             st.session_state.df_categorised = df_cat
             st.write(f"✓ Categorised {len(df_cat)} transactions in {elapsed}s")
+
+            # ── STEP 3: Generate spending summary ─────────────────────────
+            st.write("Writing your spending summary…")
+            summary_text = generate_spending_summary(
+                category_totals_df=category_totals(df_cat),
+                monthly_summary_df=monthly_summary(df_cat),
+                anomalies_df=category_month_anomalies(df_cat),
+                income_summary_dict=income_summary(df_cat),
+                spending_summary_dict=spending_summary(df_cat),
+            )
+            st.session_state.spending_summary_text = summary_text
+            st.write("✓ Summary ready")
+
             status.update(label="Analysis complete ✓", state="complete", expanded=False)
 
         except ConnectionError:
@@ -241,6 +269,14 @@ if st.session_state.df_categorised is not None:
     stats = st.session_state.stats
     inc = income_summary(df)
     spend = spending_summary(df)
+
+    # ── Spending summary ──────────────────────────────────────────────────────
+    if st.session_state.spending_summary_text:
+        st.markdown('<div class="section-title">📝 Summary</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="summary-card">{st.session_state.spending_summary_text}</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── KPI row ────────────────────────────────────────────────────────────────
     st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
