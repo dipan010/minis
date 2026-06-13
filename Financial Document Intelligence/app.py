@@ -15,6 +15,7 @@ import time
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 from synthetic_data import generate_statement
 from transaction_parser import parse_csv, summary_stats
@@ -27,6 +28,7 @@ from aggregator import (
     income_summary,
     spending_summary,
 )
+from anomaly_detector import category_month_anomalies, transaction_outliers
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -337,12 +339,88 @@ if st.session_state.df_categorised is not None:
     st.markdown('<div class="section-title">Monthly Summary</div>', unsafe_allow_html=True)
 
     monthly_df = monthly_summary(df)
+
+    # ── Plotly grouped bar + net line chart ────────────────────────────────
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=monthly_df["month"],
+        y=monthly_df["income"],
+        name="Income",
+        marker_color="#4ade80",
+    ))
+    fig.add_trace(go.Bar(
+        x=monthly_df["month"],
+        y=monthly_df["spend"],
+        name="Spend",
+        marker_color="#f87171",
+    ))
+    fig.add_trace(go.Scatter(
+        x=monthly_df["month"],
+        y=monthly_df["net"],
+        name="Net",
+        mode="lines+markers",
+        marker=dict(color="white", size=7),
+        line=dict(color="white", width=2),
+        yaxis="y2",
+    ))
+    fig.update_layout(
+        barmode="group",
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis_title="Month",
+        yaxis_title="₹ Amount",
+        yaxis2=dict(
+            title="₹ Net",
+            overlaying="y",
+            side="right",
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(l=40, r=40, t=40, b=40),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
     display_monthly = monthly_df.copy()
     for col in ["income", "spend", "net"]:
         display_monthly[col] = display_monthly[col].apply(lambda x: f"₹{x:,.2f}")
     display_monthly.columns = ["Month", "Income (₹)", "Spend (₹)", "Net (₹)"]
 
     st.dataframe(display_monthly, use_container_width=True, hide_index=True)
+
+    # ── Anomalies & Outliers ──────────────────────────────────────────────────
+    st.markdown('<div class="section-title">⚠ Anomalies &amp; Outliers</div>', unsafe_allow_html=True)
+
+    anom_monthly = category_month_anomalies(df)
+    anom_txns = transaction_outliers(df)
+
+    if anom_monthly.empty and anom_txns.empty:
+        st.success("No anomalies detected — spending looks consistent with historical patterns.")
+    else:
+        if not anom_monthly.empty:
+            with st.expander("Monthly category anomalies", expanded=True):
+                messages = []
+                for _, r in anom_monthly.iterrows():
+                    messages.append(
+                        f"{r['month']}: {r['category']} spend was {r['direction']} "
+                        f"(₹{r['spend']:,.2f}, z={r['z_score']:.2f})"
+                    )
+                for msg in messages:
+                    st.markdown(f"- {msg}")
+
+        if not anom_txns.empty:
+            with st.expander("Unusual individual transactions", expanded=True):
+                display_anom = anom_txns.copy()
+                display_anom["date"] = display_anom["date"].dt.strftime("%d %b %Y")
+                display_anom["debit"] = display_anom["debit"].apply(lambda x: f"₹{x:,.2f}")
+                display_anom["z_score"] = display_anom["z_score"].apply(lambda x: f"{x:.2f}")
+                display_anom.columns = ["Date", "Description", "Category", "Amount", "Z-Score"]
+                st.dataframe(display_anom, use_container_width=True, hide_index=True)
 
     # ── Full transaction table ─────────────────────────────────────────────────
     st.markdown('<div class="section-title">All Transactions</div>', unsafe_allow_html=True)
