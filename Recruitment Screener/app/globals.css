@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #F7F4ED;
+  --card: #FFFFFF;
+  --ink: #202A3C;
+  --ink-soft: #5B6472;
+  --hairline: #DAD4C5;
+  --match: #2F6F5E;
+  --partial: #C99A3B;
+  --gap: #C2622D;
+}
+
+body {
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--match);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .paper-texture {
+    background-image: radial-gradient(
+      circle,
+      var(--hairline) 1px,
+      transparent 1px
+    );
+    background-size: 20px 20px;
+    background-color: var(--paper);
+  }
+
+  .report-card {
+    background-color: var(--card);
+    border: 1px solid var(--hairline);
+    border-radius: 0.75rem;
+  }
+}
