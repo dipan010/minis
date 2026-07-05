@@ -6,10 +6,19 @@ text flow, stripping all internal PDF structure (/StructElem, binary streams, et
 which is what plagued SimpleDirectoryReader + pypdf on complex PDFs.
 """
 
+import hashlib
+
 import fitz  # pymupdf
-import streamlit as st
 from llama_index.core import VectorStoreIndex
 from llama_index.core.schema import Document
+
+try:
+    import streamlit as st
+except ImportError:
+    st = None  # type: ignore[assignment]
+
+# Module-level cache for non-Streamlit contexts (FastAPI / A2A)
+_index_cache: dict[str, VectorStoreIndex] = {}
 
 
 def extract_pages(file_bytes: bytes) -> list[Document]:
@@ -57,17 +66,8 @@ def make_snippet(text: str, max_len: int = 200) -> str:
     return preview[:max_len] + ("…" if len(preview) > max_len else "")
 
 
-@st.cache_resource(show_spinner=False)
-def build_index(file_bytes: bytes, filename: str) -> VectorStoreIndex:
-    """
-    Build a VectorStoreIndex from PDF bytes.
-
-    Cached with @st.cache_resource — runs once per unique (file_bytes, filename)
-    pair. Streamlit reuses the cached index on subsequent re-runs, so re-indexing
-    never happens unless a new file is uploaded.
-
-    Raises ValueError if no readable text is found (e.g. scanned image PDF).
-    """
+def _build_index_impl(file_bytes: bytes, filename: str) -> VectorStoreIndex:
+    """Core index building logic — used by both Streamlit and API contexts."""
     docs = extract_pages(file_bytes)
     if not docs:
         raise ValueError(
@@ -75,3 +75,26 @@ def build_index(file_bytes: bytes, filename: str) -> VectorStoreIndex:
             "try a text-based PDF."
         )
     return VectorStoreIndex.from_documents(docs)
+
+
+def build_index(file_bytes: bytes, filename: str) -> VectorStoreIndex:
+    """
+    Build a VectorStoreIndex from PDF bytes, with caching.
+
+    In Streamlit context: uses @st.cache_resource for session-aware caching.
+    In API context: uses a module-level dict cache keyed by content hash.
+
+    Raises ValueError if no readable text is found (e.g. scanned image PDF).
+    """
+    if st is not None and hasattr(st, "cache_resource"):
+        # Streamlit context — delegate to the cached wrapper
+        @st.cache_resource(show_spinner=False)
+        def _cached_build(fb: bytes, fn: str) -> VectorStoreIndex:
+            return _build_index_impl(fb, fn)
+        return _cached_build(file_bytes, filename)
+
+    # API / non-Streamlit context — use module-level cache
+    cache_key = hashlib.md5(file_bytes).hexdigest() + ":" + filename
+    if cache_key not in _index_cache:
+        _index_cache[cache_key] = _build_index_impl(file_bytes, filename)
+    return _index_cache[cache_key]

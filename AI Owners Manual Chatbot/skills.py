@@ -300,3 +300,18 @@ def run_skill(
         "skill_label": skill["label"],
         "similarity":  similarity,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAZY SINGLETON — for non-Streamlit contexts (FastAPI / A2A)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_router_instance: SemanticSkillRouter | None = None
+
+
+def get_router() -> SemanticSkillRouter:
+    """Return a lazily-initialized SemanticSkillRouter singleton."""
+    global _router_instance
+    if _router_instance is None:
+        _router_instance = SemanticSkillRouter()
+    return _router_instance
