@@ -11,6 +11,11 @@ requests>=2.31.0
 # Optional: PDF parsing 
 pdfplumber>=0.10.0
 
+# API + A2A
+fastapi>=0.100.0
+uvicorn>=0.23.0
+-e ../a2a-core-py
+
 # NOTE: Requires Ollama running locally.
 # Pull the model before first run:
 #   ollama pull llama3.1
