@@ -1,3 +1,8 @@
 streamlit>=1.35.0
 pymupdf>=1.24.0
 ollama>=0.2.0
+
+# API + A2A
+fastapi>=0.100.0
+uvicorn>=0.23.0
+-e ../a2a-core-py
