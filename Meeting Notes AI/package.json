@@ -11,7 +11,8 @@
     "dependencies": {
         "next": "14.2.3",
         "react": "^18",
-        "react-dom": "^18"
+        "react-dom": "^18",
+        "a2a-core-ts": "file:../a2a-core-ts"
     },
     "devDependencies": {
         "autoprefixer": "^10.0.1",

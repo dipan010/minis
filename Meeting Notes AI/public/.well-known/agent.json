@@ -1,0 +1,27 @@
+{
+  "name": "Meeting Notes AI",
+  "description": "Extracts structured information from meeting transcripts: title, summary, decisions, action items, key points, participants, and sentiment.",
+  "url": "http://localhost:3000",
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "summarize-meeting",
+      "name": "Meeting Transcript Summarizer",
+      "description": "Analyzes a meeting transcript and extracts title, summary, decisions, action items, key discussion points, participant names, and overall sentiment.",
+      "tags": ["meeting", "summarization", "action-items", "decisions"],
+      "examples": [
+        "Summarize this meeting transcript",
+        "Extract action items from this meeting",
+        "What decisions were made in this meeting?"
+      ],
+      "inputModes": ["text/plain"],
+      "outputModes": ["application/json"]
+    }
+  ]
+}
