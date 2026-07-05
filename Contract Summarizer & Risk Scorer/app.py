@@ -8,6 +8,8 @@ Setup:
     streamlit run app.py
 """
 
+import json
+
 import streamlit as st
 
 from lib.analyzer import (

@@ -79,6 +79,16 @@ def run_full_analysis(
         spending_summary_dict=spending_dict,
     )
 
+    # Ensure JSON-serializable types (pandas Period / datetime64 are not)
+    if "month" in monthly_df.columns:
+        monthly_df["month"] = monthly_df["month"].astype(str)
+    if "month" in anomalies_df.columns:
+        anomalies_df["month"] = anomalies_df["month"].astype(str)
+    for col in outliers_df.select_dtypes(include=["datetime64", "datetimetz"]).columns:
+        outliers_df[col] = outliers_df[col].dt.isoformat()
+    for col in df_cat.select_dtypes(include=["datetime64", "datetimetz"]).columns:
+        merchants_df[col] = merchants_df[col].astype(str) if col in merchants_df.columns else None
+
     # Convert DataFrames to serializable dicts
     def df_to_records(frame: pd.DataFrame) -> list[dict]:
         return frame.to_dict(orient="records") if not frame.empty else []
