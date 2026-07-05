@@ -1,0 +1,27 @@
+{
+  "name": "Email Sentiment Analyzer",
+  "description": "Analyzes email text for sentiment, tone, intent, risk level, and generates draft replies in formal, friendly, and brief styles.",
+  "url": "http://localhost:3000",
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "analyze-email-sentiment",
+      "name": "Email Sentiment Analysis",
+      "description": "Analyzes an email for primary/secondary sentiments, confidence, tone, key signals, intent, risk level, response urgency, and generates formal/friendly/brief reply drafts.",
+      "tags": ["sentiment", "email", "nlp", "reply-generation"],
+      "examples": [
+        "Analyze the sentiment of this email",
+        "What is the tone of this customer email?",
+        "Generate a reply to this frustrated email"
+      ],
+      "inputModes": ["text/plain"],
+      "outputModes": ["application/json"]
+    }
+  ]
+}
