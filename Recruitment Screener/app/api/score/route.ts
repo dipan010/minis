@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scoreMatch } from "@/lib/ollama";
+import { extractPdfText } from "@/lib/pdf-extract";
 
 export const runtime = "nodejs";
-
-// Import pdf-parse via the internal lib path rather than the package root.
-// The root entry point (require("pdf-parse")) runs a debug self-test that
-// tries to read a bundled test PDF from disk, which fails in Next.js and
-// serverless environments. Using lib/pdf-parse.js skips that check entirely.
-// This is a well-known community workaround for pdf-parse@1.1.1.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js");
-
-async function extractPdfText(file: File): Promise<string> {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const data = await pdfParse(buffer);
-  return data.text as string;
-}
 
 export async function POST(request: NextRequest) {
   let formData: FormData;

@@ -1,0 +1,27 @@
+{
+  "name": "Recruitment Screener",
+  "description": "Evaluates a candidate resume against a job description, producing a structured scoring assessment with criteria breakdown, strengths, and gaps.",
+  "url": "http://localhost:3000",
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["text/plain", "application/pdf"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "score-resume",
+      "name": "Resume-JD Screening",
+      "description": "Compares a resume against a job description and returns overall score (0-100), verdict, per-criteria breakdown (technical skills, experience, education, domain, scope), strengths, and gaps. Accepts two documents: one with metadata.role='job_description' and one with metadata.role='resume'. Each can be a TextPart (plain text) or FilePart (PDF).",
+      "tags": ["recruitment", "resume", "scoring", "hr"],
+      "examples": [
+        "Score this resume against the job description",
+        "How well does this candidate match the role?",
+        "Evaluate this candidate's fit"
+      ],
+      "inputModes": ["text/plain", "application/pdf"],
+      "outputModes": ["application/json"]
+    }
+  ]
+}
