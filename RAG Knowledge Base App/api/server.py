@@ -47,6 +47,7 @@ from pydantic import BaseModel
 from config import settings
 from core.ingest import ingest_pdf, ingest_url, list_sources, clear_collection
 from core.query import query_knowledge_base
+from api.a2a_handler import a2a_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -67,6 +68,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── A2A Protocol Endpoints ──────────────────────────────────────────────
+app.include_router(a2a_router)
 
 
 # ── Request / Response models ────────────────────────────────────────────

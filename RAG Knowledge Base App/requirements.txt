@@ -17,6 +17,9 @@ streamlit>=1.35.0
 # Utilities
 python-dotenv>=1.0.0
 
+# A2A Protocol
+-e ../a2a-core-py
+
 # NOTE: You must have Ollama running locally with these models pulled:
 #   ollama pull llama3
 #   ollama pull nomic-embed-text
