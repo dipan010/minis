@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "a2a-core-py"
+version = "1.0.0"
+description = "Shared A2A (Agent-to-Agent) protocol library for Python/FastAPI projects"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0",
+    "fastapi>=0.100.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["a2a_core*"]
