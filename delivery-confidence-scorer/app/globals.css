@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --good: #188653;
+  --caution: #b57a0b;
+  --danger: #c03221;
+  --critical: #8b1a2b;
+}
+
+body {
+  @apply bg-surface text-ink font-body;
+}
+
+.panel {
+  @apply bg-card border border-line rounded-xl shadow-sm;
+}
+
+/* Stylized "route map" placeholder behind the confidence gauge */
+.map-backdrop {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(27, 58, 99, 0.14) 0, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(27, 58, 99, 0.12) 0, transparent 45%),
+    repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(27, 58, 99, 0.07) 40px),
+    repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(27, 58, 99, 0.07) 40px),
+    linear-gradient(160deg, #eef3f9 0%, #dfe8f2 100%);
+}

@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-base text-ink font-body;
+}
+
+.panel {
+  @apply bg-card border border-line rounded-xl;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.scroll-strip {
+  scrollbar-width: thin;
+  scrollbar-color: #262f41 transparent;
+}

@@ -1,4 +1,4 @@
-// File: /Users/dipanghosh/Projects/agent-learning/Recruitment Screener/app/layout.tsx
+// File: /home/user/minis/Recruitment Screener/app/layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

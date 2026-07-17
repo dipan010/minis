@@ -72,6 +72,21 @@ Open [http://localhost:3000](http://localhost:3000).
 4. Click **Score candidate**. Results appear below the button as a full report
    card once Ollama responds.
 
+5. **Bias check runs automatically** the moment scoring completes — a
+   "Checking for bias…" indicator appears above the score, then resolves to
+   either a green "No bias signals detected" badge or an amber/red banner
+   with expandable flag details. The full audit lives in the **Bias Check**
+   tab.
+
+6. Open the **Interview Kit** tab and click **Generate Interview Kit** to
+   get 12 tailored questions — 4 technical (probing the scored gaps),
+   4 behavioural (STAR-format), and 4 culture-fit — each with a rationale
+   and a "what good looks like" evaluation guide.
+
+7. **Export full report** (top-right of the results) downloads the score
+   report, bias check, and interview kit as a single formatted Markdown
+   file.
+
 ---
 
 ## Architecture
@@ -144,6 +159,64 @@ CSS variable colours: `--match` (green, ≥ 75), `--partial` (amber, ≥ 50),
 the overall score number and verdict text without duplicating the threshold
 logic.
 
+### `lib/questions.ts` *(Week 2)*
+The tailored interview question bank generator. `QUESTION_BANK_SCHEMA`
+constrains the model to return exactly 4 questions in each of three
+categories — `technical`, `behavioural`, `culture` — each with a `question`,
+a `rationale` (why this question matters for *this* candidate), and
+`what_to_look_for` (what a strong answer looks like, so a non-expert
+interviewer can evaluate it). `generateQuestions()` sends the full scoring
+report, the JD, and the resume as context so technical questions probe the
+*specific* gaps found during scoring, behavioural questions are STAR-format
+prompts tied to the role's real responsibilities, and culture-fit questions
+are grounded in values inferred from the JD. Runs at `temperature: 0.4` for
+question variety while the schema keeps the shape rigid.
+
+### `lib/biasCheck.ts` *(Week 2)*
+The fairness audit pass. `checkBias()` sends the scoring report (plus the
+source documents for context) to Ollama with a prompt that casts the model
+as a fairness auditor — explicitly *not* re-scoring the candidate, only
+checking the assessment itself for bias signals across six categories: age
+indicators, gender-coded language, educational prestige bias,
+name/ethnicity inference, unfairly penalized employment gaps, and other.
+The `BIAS_REPORT_SCHEMA` enum-constrains flag types and severities, and the
+prompt instructs the model that an empty flags array is the *correct*
+output for a clean report (to counteract the LLM tendency to invent
+findings). Each flag carries an actionable `recommendation` for the
+recruiter.
+
+### `lib/exportReport.ts` *(Week 2)*
+Pure client-side helpers for the "Export full report" button.
+`buildMarkdownReport()` assembles a single formatted Markdown document from
+whichever report parts exist — score report (with a criteria table), bias
+check, and interview kit — gracefully noting any section that wasn't run.
+`downloadMarkdown()` triggers the browser download via a Blob URL.
+
+### `app/api/questions/route.ts` *(Week 2)*
+POST endpoint accepting `{ report, jobDescription, resumeText, model?,
+ollamaUrl? }` as JSON and returning the `QuestionBank`. Validates that a
+real scoring report and both context documents are present before calling
+`generateQuestions()`.
+
+### `app/api/bias-check/route.ts` *(Week 2)*
+POST endpoint with the same request contract as `/api/questions`, returning
+a `BiasReport`. Called automatically by the client as soon as scoring
+completes.
+
+### `components/QuestionBank.tsx` *(Week 2)*
+Accordion UI for the interview kit: three collapsible category cards
+(Technical / Behavioural / Culture Fit, first one open by default), each
+question numbered with a "why this question" rationale toggle and an
+always-visible green "What good looks like" guide box.
+
+### `components/BiasPanel.tsx` *(Week 2)*
+Renders the bias check in all four of its states: a spinner row while
+"Checking for bias…", an error banner with the failure message, a green
+"No bias signals detected" badge when clean, or an amber/red banner (red
+when `overall_risk` is high) with expandable per-flag rows showing severity,
+detail, and recommendation. Rendered both above the score in the Score
+Report tab and as the main content of the Bias Check tab.
+
 ### `components/CriterionRow.tsx`
 Renders a single row in the criteria breakdown section of the report. Accepts a
 `CriterionScore` (`name`, `score`, `rationale`) and renders the dimension name
@@ -172,11 +245,30 @@ one-to-two-sentence rationale beneath it. A `border-b border-hairline` with
   *shape* of the response but not the exact numeric values the model chooses.
   Treat scores as directional guidance, not precise measurements.
 
+- **Bias check is LLM-on-LLM, not a guarantee:** The bias pass is a second
+  opinion from the same model family that produced the score. It catches
+  surface signals (gender-coded wording, prestige framing, gap penalties in
+  the rationale text) but can both miss subtle bias and occasionally
+  over-flag neutral language. A clean result does **not** certify the
+  assessment as fair — it is one input to a human reviewer, and none of this
+  tool's output should be used as an automated hiring decision.
+
+- **Interview questions need human vetting:** Generated questions are
+  tailored from the scoring report, so a wrong gap in the report propagates
+  into an off-target question. Skim the "why this question" rationales
+  before an interview and drop anything that doesn't apply — and be aware
+  local 8B models occasionally produce generic questions despite the
+  gap-probing instructions.
+
+- **Question/flag counts:** The JSON schema requests exactly 4 questions per
+  category (`minItems`/`maxItems`), but some Ollama versions treat array
+  bounds as advisory. The UI renders whatever count comes back.
+
 ---
 
 ## Feature checklist
 
 - [x] JD + resume parser (paste or PDF upload)
 - [x] Ollama match scoring with JSON schema–constrained output
-- [ ] Tailored interview questions
-- [ ] Bias-flag layer
+- [x] Tailored interview questions
+- [x] Bias-flag layer

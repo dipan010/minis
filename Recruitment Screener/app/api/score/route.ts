@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await scoreMatch(jobDescription, resumeText, { model, ollamaUrl });
-    return NextResponse.json(result);
+    // Echo the resolved inputs back so the client can pass them to the
+    // question-bank and bias-check endpoints even when a PDF was uploaded.
+    return NextResponse.json({ ...result, inputs: { jobDescription, resumeText } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const hint = message.includes("fetch failed")

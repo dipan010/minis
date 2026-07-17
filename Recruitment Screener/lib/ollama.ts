@@ -90,13 +90,23 @@ ${resumeText}
 """`;
 }
 
-export async function scoreMatch(
-  jobDescription: string,
-  resumeText: string,
-  options?: { ollamaUrl?: string; model?: string }
-): Promise<ScreeningResult> {
+export interface OllamaCallOptions {
+  ollamaUrl?: string;
+  model?: string;
+  temperature?: number;
+}
+
+/** POST a prompt to Ollama's /api/generate with a JSON schema in the
+ * `format` field and parse the structured response. Shared by the scorer,
+ * the question-bank generator, and the bias checker. */
+export async function callOllamaStructured<T>(
+  prompt: string,
+  schema: object,
+  options?: OllamaCallOptions
+): Promise<T> {
   const ollamaUrl = options?.ollamaUrl ?? DEFAULT_OLLAMA_URL;
   const model = options?.model ?? DEFAULT_MODEL;
+  const temperature = options?.temperature ?? 0.1;
 
   let response: Response;
   try {
@@ -105,10 +115,10 @@ export async function scoreMatch(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
-        prompt: buildPrompt(jobDescription, resumeText),
+        prompt,
         stream: false,
-        format: SCORE_SCHEMA,
-        options: { temperature: 0.1 },
+        format: schema,
+        options: { temperature },
       }),
     });
   } catch (err) {
@@ -130,14 +140,23 @@ export async function scoreMatch(
 
   const data = await response.json();
 
-  let result: ScreeningResult;
   try {
-    result = JSON.parse(data.response) as ScreeningResult;
+    return JSON.parse(data.response) as T;
   } catch {
     throw new Error(
       `Failed to parse Ollama response as JSON. Raw response: ${data.response}`
     );
   }
+}
 
-  return result;
+export async function scoreMatch(
+  jobDescription: string,
+  resumeText: string,
+  options?: { ollamaUrl?: string; model?: string }
+): Promise<ScreeningResult> {
+  return callOllamaStructured<ScreeningResult>(
+    buildPrompt(jobDescription, resumeText),
+    SCORE_SCHEMA,
+    options
+  );
 }

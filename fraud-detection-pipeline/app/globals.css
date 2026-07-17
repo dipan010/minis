@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ok: #2dd4a7;
+  --warn: #f5b83d;
+  --bad: #f0524a;
+}
+
+body {
+  @apply bg-base text-ink font-body;
+}
+
+.panel {
+  @apply bg-card border border-line rounded-lg;
+}
+
+@keyframes stat-pulse {
+  0% { color: #ffffff; }
+  100% { color: inherit; }
+}
+
+.stat-pulse {
+  animation: stat-pulse 600ms ease-out;
+}
