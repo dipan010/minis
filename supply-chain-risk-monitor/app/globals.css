@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --low: #178a50;
+  --med: #b07a10;
+  --high: #bf3128;
+}
+
+body {
+  @apply bg-surface text-ink font-body;
+}
+
+.panel {
+  @apply bg-card border border-line rounded-xl shadow-sm;
+}
+
+.table-striped tbody tr:nth-child(odd) {
+  background: #f8fafc;
+}
