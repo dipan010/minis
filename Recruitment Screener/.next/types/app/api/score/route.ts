@@ -1,4 +1,4 @@
-// File: /Users/dipanghosh/Projects/agent-learning/Recruitment Screener/app/api/score/route.ts
+// File: /home/user/minis/Recruitment Screener/app/api/score/route.ts
 import * as entry from '../../../../../app/api/score/route.js'
 import type { NextRequest } from 'next/server.js'
 

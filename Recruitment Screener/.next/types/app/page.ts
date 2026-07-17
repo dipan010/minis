@@ -1,4 +1,4 @@
-// File: /Users/dipanghosh/Projects/agent-learning/Recruitment Screener/app/page.tsx
+// File: /home/user/minis/Recruitment Screener/app/page.tsx
 import * as entry from '../../../app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
