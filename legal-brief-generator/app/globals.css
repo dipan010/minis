@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-parchment text-ink font-sans;
+}
+
+.document {
+  @apply bg-ivory border border-line rounded-lg shadow-sm;
+}
+
+.doc-body {
+  @apply font-serif text-[15px] leading-relaxed text-ink;
+}
+
+html {
+  scroll-behavior: smooth;
+}
